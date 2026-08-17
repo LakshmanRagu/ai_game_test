@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>TACTICAL OPS</title>
+    
+    <!-- Load Google Font: Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    
+    <!-- Inline CSS so no external file loading needed -->
+    <style>
+/* RESET */
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: 'Inter', sans-serif;
+    overflow: hidden;
+    background: #000;
+    width: 100vw;
+    height: 100vh;
+}
+
+#game-container { position: fixed; inset: 0; }
+#game-container canvas { display: block; width: 100%; height: 100%; }
+
+#damage-overlay {
+    position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(circle, transparent 40%, rgba(255, 0, 0, 0.4) 100%);
+    opacity: 0; transition: opacity 0.1s ease-in-out; z-index: 50;
+}
+#damage-overlay.active { opacity: 1; }
+
+#hud { position: fixed; inset: 0; pointer-events: none; z-index: 100; }
+#hud * { pointer-events: none; }
+
+#crosshair {
+    position: absolute; top: 50%; left: 50%;
+    transform: translate(-50%, -50%); --spread: 0px;
+}
+.crosshair-line { position: absolute; background: rgba(255, 255, 255, 0.85); transition: transform 0.1s ease-out; }
+#crosshair-top { width: 2px; height: 14px; bottom: 8px; left: 50%; transform: translateX(-50%) translateY(calc(var(--spread) * -1)); }
+#crosshair-bottom { width: 2px; height: 14px; top: 8px; left: 50%; transform: translateX(-50%) translateY(var(--spread)); }
+#crosshair-left { height: 2px; width: 14px; right: 8px; top: 50%; transform: translateY(-50%) translateX(calc(var(--spread) * -1)); }
+#crosshair-right { height: 2px; width: 14px; left: 8px; top: 50%; transform: translateY(-50%) translateX(var(--spread)); }
+#crosshair-dot { position: absolute; width: 2px; height: 2px; background: white; top: 50%; left: 50%; transform: translate(-50%, -50%); border-radius: 50%; }
+
+#hit-marker {
+    position: absolute; top: 50%; left: 50%; width: 0; height: 0;
+    transform: translate(-50%, -50%) rotate(45deg); opacity: 0; transition: opacity 0.1s ease-out;
+}
+.hit-line { position: absolute; background: white; }
+.hit-tl { width: 2px; height: 10px; bottom: 5px; left: -1px; }
+.hit-tr { width: 10px; height: 2px; left: 5px; top: -1px; }
+.hit-bl { width: 10px; height: 2px; right: 5px; top: -1px; }
+.hit-br { width: 2px; height: 10px; top: 5px; left: -1px; }
+#hit-marker.active { animation: hitMarkerPop 0.2s ease-out forwards; }
+
+#top-bar { position: absolute; top: 15px; left: 50%; transform: translateX(-50%); display: flex; align-items: center; gap: 20px; }
+#score-display, #round-timer {
+    background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 8px;
+}
+#score-display { padding: 8px 20px; display: flex; align-items: center; }
+.score-team { font-size: 24px; font-weight: 900; }
+.ct { color: #5d9cec; }
+.t { color: #f0ad4e; }
+.score-separator { color: rgba(255, 255, 255, 0.5); margin: 0 8px; font-size: 24px; }
+#round-timer { font-size: 18px; font-weight: 700; color: white; padding: 8px 16px; font-variant-numeric: tabular-nums; }
+
+#kill-feed { position: absolute; top: 60px; right: 20px; display: flex; flex-direction: column; gap: 4px; }
+.kill-entry {
+    background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.1); padding: 6px 12px;
+    border-radius: 6px; font-size: 13px; white-space: nowrap;
+    animation: slideInRight 0.3s ease-out forwards, fadeOut 0.5s ease 4s forwards;
+}
+.killer-name { font-weight: 700; color: #5d9cec; }
+.victim-name { font-weight: 700; color: #f0ad4e; }
+.kill-icon { margin: 0 6px; font-size: 11px; }
+
+#minimap-container {
+    position: absolute; top: 15px; left: 15px; width: 160px; height: 160px;
+    background: rgba(0, 0, 0, 0.5); backdrop-filter: blur(10px);
+    border-radius: 10px; overflow: hidden; padding: 5px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+}
+#minimap-canvas { width: 100%; height: 100%; border-radius: 6px; }
+
+#bottom-hud { position: absolute; bottom: 20px; left: 20px; right: 20px; display: flex; justify-content: space-between; align-items: flex-end; }
+
+#health-section { display: flex; flex-direction: column; gap: 6px; }
+.stat-row { display: flex; align-items: center; gap: 10px; }
+.stat-icon { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; border-radius: 6px; font-size: 16px; font-weight: 900; }
+.health-icon { background: rgba(76, 175, 80, 0.3); color: #4CAF50; }
+.armor-icon { background: rgba(33, 150, 243, 0.3); color: #2196F3; }
+.stat-bar-container { display: flex; align-items: center; gap: 8px; }
+.stat-bar-bg { width: 200px; height: 6px; background: rgba(255, 255, 255, 0.1); border-radius: 3px; overflow: hidden; }
+.stat-bar-fill { height: 100%; border-radius: 3px; transition: width 0.3s ease; }
+#health-fill { background: linear-gradient(90deg, #4CAF50, #8BC34A); width: 100%; }
+#armor-fill { background: linear-gradient(90deg, #2196F3, #03A9F4); width: 100%; }
+.stat-value { font-size: 16px; font-weight: 700; color: white; min-width: 35px; font-variant-numeric: tabular-nums; }
+
+#ammo-section { text-align: right; }
+#weapon-name { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: rgba(255, 255, 255, 0.5); margin-bottom: 4px; }
+#ammo-display { font-variant-numeric: tabular-nums; }
+#ammo-current { font-size: 48px; font-weight: 900; color: white; }
+.ammo-separator { font-size: 32px; color: rgba(255, 255, 255, 0.3); margin: 0 4px; }
+#ammo-reserve { font-size: 28px; font-weight: 600; color: rgba(255, 255, 255, 0.5); }
+.ammo-low #ammo-current { color: #ff5252; animation: pulse 1s infinite; }
+
+#fps-counter { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255, 255, 255, 0.3); font-variant-numeric: tabular-nums; }
+
+.game-screen {
+    position: fixed; inset: 0; z-index: 200;
+    display: flex; align-items: center; justify-content: center;
+    background: radial-gradient(circle at center, rgba(30,30,40,0.85) 0%, rgba(10,10,15,0.98) 100%);
+    backdrop-filter: blur(5px);
+}
+.screen-content { text-align: center; max-width: 500px; }
+
+.game-title { font-size: clamp(60px, 10vw, 80px); font-weight: 900; text-transform: uppercase; line-height: 0.9; color: white; text-shadow: 0 0 20px rgba(255, 255, 255, 0.2); }
+.title-accent { background: linear-gradient(135deg, #ff6b35, #f7421e); background-clip: text; -webkit-background-clip: text; color: transparent; }
+.game-subtitle { font-size: 18px; letter-spacing: 8px; text-transform: uppercase; color: rgba(255, 255, 255, 0.5); margin-top: 10px; }
+.controls-info { display: grid; grid-template-columns: repeat(auto-fit, minmax(100px, 1fr)); gap: 12px; margin: 40px 0; }
+.control-item { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.control-item kbd { background: rgba(255, 255, 255, 0.1); border: 1px solid rgba(255, 255, 255, 0.2); border-radius: 6px; padding: 6px 12px; font-family: 'Inter', sans-serif; font-size: 13px; font-weight: 600; color: white; min-width: 40px; display: inline-block; }
+.control-item span { font-size: 11px; color: rgba(255, 255, 255, 0.4); text-transform: uppercase; letter-spacing: 1px; }
+
+.death-title { font-size: 60px; font-weight: 900; color: #ff5252; text-transform: uppercase; text-shadow: 0 0 30px rgba(255, 82, 82, 0.5); }
+#death-stats { display: flex; justify-content: center; gap: 40px; margin: 30px 0; }
+.death-stat { display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.stat-label { font-size: 12px; text-transform: uppercase; letter-spacing: 2px; color: rgba(255, 255, 255, 0.4); }
+.stat-num { font-size: 36px; font-weight: 900; color: white; }
+
+.pause-title { font-size: 48px; font-weight: 900; color: white; text-transform: uppercase; margin-bottom: 30px; }
+
+.game-btn { pointer-events: auto; font-family: 'Inter', sans-serif; }
+.primary-btn {
+    background: linear-gradient(135deg, #ff6b35, #f7421e); color: white; border: none;
+    padding: 16px 48px; border-radius: 8px; font-size: 16px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 2px; cursor: pointer; transition: all 0.2s ease;
+}
+.primary-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(255, 107, 53, 0.4); }
+.primary-btn:active { transform: translateY(0); }
+
+@keyframes slideInRight { from { transform: translateX(100px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
+@keyframes fadeOut { to { opacity: 0; transform: translateX(20px); } }
+@keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+@keyframes hitMarkerPop { from { transform: translate(-50%, -50%) rotate(45deg) scale(1.2); opacity: 1; } to { transform: translate(-50%, -50%) rotate(45deg) scale(0.8); opacity: 0; } }
+    </style>
+
+    <!-- Three.js importmap — uses confirmed working CDN version -->
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.174.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.174.0/examples/jsm/"
+      }
+    }
+    </script>
+</head>
+<body>
+    <div id="game-container"></div>
+
+    <div id="damage-overlay"></div>
+
+    <div id="hud" style="display:none;">
+      <div id="crosshair">
+        <div class="crosshair-line" id="crosshair-top"></div>
+        <div class="crosshair-line" id="crosshair-right"></div>
+        <div class="crosshair-line" id="crosshair-bottom"></div>
+        <div class="crosshair-line" id="crosshair-left"></div>
+        <div id="crosshair-dot"></div>
+      </div>
+      
+      <div id="hit-marker">
+        <div class="hit-line hit-tl"></div>
+        <div class="hit-line hit-tr"></div>
+        <div class="hit-line hit-bl"></div>
+        <div class="hit-line hit-br"></div>
+      </div>
+      
+      <div id="top-bar">
+        <div id="score-display">
+          <span id="score-ct" class="score-team ct">0</span>
+          <span class="score-separator">:</span>
+          <span id="score-t" class="score-team t">0</span>
+        </div>
+        <div id="round-timer">3:00</div>
+      </div>
+      
+      <div id="kill-feed"></div>
+      
+      <div id="minimap-container">
+        <canvas id="minimap-canvas" width="200" height="200"></canvas>
+      </div>
+      
+      <div id="bottom-hud">
+        <div id="health-section">
+          <div class="stat-row">
+            <div class="stat-icon health-icon">+</div>
+            <div class="stat-bar-container">
+              <div class="stat-bar-bg"><div class="stat-bar-fill" id="health-fill"></div></div>
+              <span class="stat-value" id="health-text">100</span>
+            </div>
+          </div>
+          <div class="stat-row">
+            <div class="stat-icon armor-icon">🛡</div>
+            <div class="stat-bar-container">
+              <div class="stat-bar-bg"><div class="stat-bar-fill armor" id="armor-fill"></div></div>
+              <span class="stat-value" id="armor-text">100</span>
+            </div>
+          </div>
+        </div>
+        
+        <div id="ammo-section">
+          <div id="weapon-name">AK-47</div>
+          <div id="ammo-display">
+            <span id="ammo-current">30</span>
+            <span class="ammo-separator">/</span>
+            <span id="ammo-reserve">90</span>
+          </div>
+        </div>
+      </div>
+      
+      <div id="fps-counter">60 FPS</div>
+    </div>
+
+    <div id="start-screen" class="game-screen">
+      <div class="screen-content">
+        <h1 class="game-title">TACTICAL<br><span class="title-accent">OPS</span></h1>
+        <p class="game-subtitle">BROWSER EDITION</p>
+        <div class="controls-info">
+          <div class="control-item"><kbd>W A S D</kbd><span>Move</span></div>
+          <div class="control-item"><kbd>MOUSE</kbd><span>Aim</span></div>
+          <div class="control-item"><kbd>CLICK</kbd><span>Shoot</span></div>
+          <div class="control-item"><kbd>R</kbd><span>Reload</span></div>
+          <div class="control-item"><kbd>1 2</kbd><span>Switch</span></div>
+          <div class="control-item"><kbd>SPACE</kbd><span>Jump</span></div>
+          <div class="control-item"><kbd>SHIFT</kbd><span>Sprint</span></div>
+        </div>
+        <button id="start-btn" class="game-btn primary-btn">▶ DEPLOY</button>
+      </div>
+    </div>
+
+    <div id="death-screen" class="game-screen" style="display:none;">
+      <div class="screen-content">
+        <h2 class="death-title">YOU DIED</h2>
+        <div id="death-stats">
+          <div class="death-stat"><span class="stat-label">Kills</span><span class="stat-num" id="death-kills">0</span></div>
+          <div class="death-stat"><span class="stat-label">Deaths</span><span class="stat-num" id="death-deaths">0</span></div>
+          <div class="death-stat"><span class="stat-label">Accuracy</span><span class="stat-num" id="death-accuracy">0%</span></div>
+        </div>
+        <button id="restart-btn" class="game-btn primary-btn">↻ RESPAWN</button>
+      </div>
+    </div>
+
+    <div id="pause-screen" class="game-screen" style="display:none;">
+      <div class="screen-content">
+        <h2 class="pause-title">PAUSED</h2>
+        <button id="resume-btn" class="game-btn primary-btn">▶ RESUME</button>
+      </div>
+    </div>
+
+    <script type="module" src="game.js"></script>
+</body>
+</html>
